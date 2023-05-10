@@ -56,7 +56,7 @@ def upload_to_album(upload_url, img):
         files = {"photo": file}
         response = requests.post(upload_url, files=files)
         _ = response.json()
-        os.remove(img)
+    os.remove(img)
     return _['server'], _['photo'], _['hash']
 
 
