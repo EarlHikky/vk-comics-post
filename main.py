@@ -6,12 +6,19 @@ from urllib.parse import urlparse, unquote
 from dotenv import load_dotenv
 
 
-# def get_extension(url):
-#     _, extension = splitext(urlparse(url).path)
-#     return extension
+class VkError(Exception):
+    def __init__(self, message, base_message=None):
+        self.base_message = base_message
+        self.message = message
+
+    def __str__(self):
+        if self.base_message is None:
+            return self.message
+
+        return f'Vk_Ошибка: {self.message} \nКод ошибки: {str(self.base_message)}'
 
 
-def get_last_comics():
+def get_last_comics_num():
     url = 'https://xkcd.com/info.0.json'
     response = requests.get(url)
     response.raise_for_status()
@@ -19,21 +26,9 @@ def get_last_comics():
     return num
 
 
-def save_img_to_pc(img_url):
-    # def save_img_to_pc(img_url, image_title):
-    img = urlparse(unquote(img_url)).path.rstrip("/").split("/")[-1]
-    response = requests.get(img_url)
-    response.raise_for_status()
-    # extension = get_extension(url)
-    # with open(f'./{image_title}{extension}', 'wb') as file:
-    with open(f'./{img}', 'wb') as file:
-        file.write(response.content)
-        return file.name
-
-
 def get_comics_from_xkcd():
     """Get comics from https://xkcd.com/"""
-    url = f"https://xkcd.com/{random.randrange(1, get_last_comics() + 1)}/info.0.json"
+    url = f"https://xkcd.com/{random.randrange(1, get_last_comics_num() + 1)}/info.0.json"
     response = requests.get(url)
     response.raise_for_status()
     post = response.json()
@@ -44,15 +39,13 @@ def get_comics_from_xkcd():
         return img, comics_message
 
 
-def get_vk_upload_server_url(vk_token, api_version):
-    url = 'https://api.vk.com/method/photos.getWallUploadServer'
-    params = {'access_token': vk_token,
-              'v': api_version
-              }
-    response = requests.get(url, params)
+def save_img_to_pc(img_url):
+    img = urlparse(unquote(img_url)).path.rstrip("/").split("/")[-1]
+    response = requests.get(img_url)
     response.raise_for_status()
-    upload_url = response.json()["response"]["upload_url"]
-    return upload_url
+    with open(f'./{img}', 'wb') as file:
+        file.write(response.content)
+        return file.name
 
 
 def del_img_from_pc(img):
@@ -61,30 +54,11 @@ def del_img_from_pc(img):
     os.remove(img)
 
 
-def upload_img_to_vk_album(upload_url, img):
-    with open(img, 'rb') as file:
-        files = {"photo": file}
-        response = requests.post(upload_url, files=files)
-    uploaded_photo = response.json()
-    server = uploaded_photo['server']
-    photo = uploaded_photo['photo']
-    photo_hash = uploaded_photo['hash']
-    return server, photo, photo_hash
-
-
-def save_img_to_vk_album(server, photo, img_hash,
-                         vk_token, api_version):
-    url = 'https://api.vk.com/method/photos.saveWallPhoto'
-    params = {'server': server,
-              'photo': photo,
-              'hash': img_hash,
-              'access_token': vk_token,
-              'v': api_version
-              }
-    response = requests.post(url, params=params)
-    response.raise_for_status()
-    uploaded_photo = response.json()["response"][0]
-    return uploaded_photo['owner_id'], uploaded_photo['id']
+def check_response_status(response):
+    status = response.json()
+    if 'error' not in status.keys():
+        return True
+    raise VkError(status['error']['error_msg'], status['error']['error_code'])
 
 
 def post_img_to_vk_group_wall(group_id, owner_id, media_id,
@@ -101,8 +75,47 @@ def post_img_to_vk_group_wall(group_id, owner_id, media_id,
     }
     response = requests.post(url, params=params)
     response.raise_for_status()
-    # print(response.text)
-    # return response.text
+    check_response_status(response)
+
+
+def save_img_to_vk_album(server, photo, img_hash,
+                         vk_token, api_version):
+    url = 'https://api.vk.com/method/photos.saveWallPhoto'
+    params = {'server': server,
+              'photo': photo,
+              'hash': img_hash,
+              'access_token': vk_token,
+              'v': api_version
+              }
+    response = requests.post(url, params=params)
+    response.raise_for_status()
+    check_response_status(response)
+    uploaded_photo = response.json()["response"][0]
+    return uploaded_photo['owner_id'], uploaded_photo['id']
+
+
+def upload_img_to_vk_album(upload_url, img):
+    with open(img, 'rb') as file:
+        files = {"photo": file}
+        response = requests.post(upload_url, files=files)
+    uploaded_photo = response.json()
+    server = uploaded_photo['server']
+    photo = uploaded_photo['photo']
+    photo_hash = uploaded_photo['hash']
+    check_response_status(response)
+    return server, photo, photo_hash
+
+
+def get_vk_upload_server_url(vk_token, api_version):
+    url = 'https://api.vk.com/method/photos.getWallUploadServer'
+    params = {'access_token': vk_token,
+              'v': api_version
+              }
+    response = requests.get(url, params)
+    response.raise_for_status()
+    check_response_status(response)
+    upload_url = response.json()["response"]["upload_url"]
+    return upload_url
 
 
 def main():
@@ -119,10 +132,19 @@ def main():
         post_img_to_vk_group_wall(group_id, owner_id, media_id,
                                   api_version, comics_message,
                                   vk_token)
-    except Exception as e:
+    except (requests.HTTPError, requests.ConnectionError) as e:
         print(e)
+    except VkError as e:
+        print(e)
+    except KeyError as e:
+        print('Нет переменной среды:', e)
+    except FileNotFoundError:
+        print(f'Изображение {img} не найдено')
     finally:
-        del_img_from_pc(img)
+        try:
+            del_img_from_pc(img)
+        except UnboundLocalError:
+            pass
 
 
 if __name__ == '__main__':
