@@ -7,15 +7,15 @@ from dotenv import load_dotenv
 
 
 class VkError(Exception):
-    def __init__(self, message, base_message=None):
-        self.base_message = base_message
-        self.message = message
+    def __init__(self, err_msg, err_code=None):
+        self.err_msg = err_msg
+        self.err_code = err_code
 
     def __str__(self):
-        if self.base_message is None:
-            return self.message
+        if self.err_code is None:
+            return self.err_msg
 
-        return f'Vk_Ошибка: {self.message} \nКод ошибки: {str(self.base_message)}'
+        return f'Vk_Ошибка: {self.err_msg} \nКод ошибки: {str(self.err_code)}'
 
 
 def get_last_comics_num():
@@ -58,7 +58,9 @@ def check_response_status(response):
     status = response.json()
     if 'error' not in status.keys():
         return True
-    raise VkError(status['error']['error_msg'], status['error']['error_code'])
+    err_msg = status['error']['error_msg']
+    err_code = status['error']['error_code']
+    raise VkError(err_msg, err_code)
 
 
 def post_img_to_vk_group_wall(group_id, owner_id, media_id,
