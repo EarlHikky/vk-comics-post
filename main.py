@@ -26,7 +26,7 @@ def get_last_comics_num():
     return num
 
 
-def get_comics_from_xkcd():
+def get_random_comics_from_xkcd():
     """Get comics from https://xkcd.com/"""
     url = f"https://xkcd.com/{random.randrange(1, get_last_comics_num() + 1)}/info.0.json"
     response = requests.get(url)
@@ -54,12 +54,11 @@ def del_img_from_pc(img):
     os.remove(img)
 
 
-def check_response_status(response):
-    status = response.json()
-    if 'error' not in status.keys():
+def check_response_status(vk_response_data):
+    if 'error' not in vk_response_data.keys():
         return True
-    err_msg = status['error']['error_msg']
-    err_code = status['error']['error_code']
+    err_msg = vk_response_data['error']['error_msg']
+    err_code = vk_response_data['error']['error_code']
     raise VkError(err_msg, err_code)
 
 
@@ -77,7 +76,8 @@ def post_img_to_vk_group_wall(group_id, owner_id, media_id,
     }
     response = requests.post(url, params=params)
     response.raise_for_status()
-    check_response_status(response)
+    vk_response_data = response.json()
+    check_response_status(vk_response_data)
 
 
 def save_img_to_vk_album(server, photo, img_hash,
@@ -91,8 +91,9 @@ def save_img_to_vk_album(server, photo, img_hash,
               }
     response = requests.post(url, params=params)
     response.raise_for_status()
-    check_response_status(response)
-    uploaded_photo = response.json()["response"][0]
+    vk_response_data = response.json()
+    check_response_status(vk_response_data)
+    uploaded_photo = vk_response_data["response"][0]
     return uploaded_photo['owner_id'], uploaded_photo['id']
 
 
@@ -100,11 +101,11 @@ def upload_img_to_vk_album(upload_url, img):
     with open(img, 'rb') as file:
         files = {"photo": file}
         response = requests.post(upload_url, files=files)
-    uploaded_photo = response.json()
-    server = uploaded_photo['server']
-    photo = uploaded_photo['photo']
-    photo_hash = uploaded_photo['hash']
-    check_response_status(response)
+    vk_response_data = response.json()
+    check_response_status(vk_response_data)
+    server = vk_response_data['server']
+    photo = vk_response_data['photo']
+    photo_hash = vk_response_data['hash']
     return server, photo, photo_hash
 
 
@@ -115,8 +116,9 @@ def get_vk_upload_server_url(vk_token, api_version):
               }
     response = requests.get(url, params)
     response.raise_for_status()
-    check_response_status(response)
-    upload_url = response.json()["response"]["upload_url"]
+    vk_response_data = response.json()
+    check_response_status(vk_response_data)
+    upload_url = vk_response_data["response"]["upload_url"]
     return upload_url
 
 
@@ -126,7 +128,7 @@ def main():
         load_dotenv()
         vk_token = os.environ['VK_API_TOKEN']
         group_id = -int(os.environ['VK_GROUP_ID'])
-        img, comics_message = get_comics_from_xkcd()
+        img, comics_message = get_random_comics_from_xkcd()
         upload_url = get_vk_upload_server_url(vk_token, api_version)
         server, photo, img_hash = upload_img_to_vk_album(upload_url, img)
         owner_id, media_id = save_img_to_vk_album(server, photo, img_hash,
